@@ -120,7 +120,7 @@ def _map_peaks(wl_arr, signal, nist_df, peak_height, peak_distance):
 
 # En spectrometry_analyzer.py
 
-def _detect_main_ions_for_panel(h5_path, nist_df, peak_height=50):
+def _detect_main_ions_for_panel(h5_path, nist_df, peak_height=250):
     """
     Función exhaustiva que analiza CADA frame del disparo para encontrar todos los
     iones que superan el umbral en cualquier momento.
@@ -160,6 +160,7 @@ def _detect_main_ions_for_panel(h5_path, nist_df, peak_height=50):
     # Si no se encuentra nada en ningún frame, devolver listas vacías
     return [], []
 
+
 def plot_ion_evolution_on_ax(ax, shot_number, shot_color, h5_path, ions_to_process, scaling_dict, formation_time=0.0):
     ax.set_xlabel("Tiempo [ms]"); ax.set_ylabel("Intensidad (A.U.)")
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
@@ -169,9 +170,21 @@ def plot_ion_evolution_on_ax(ax, shot_number, shot_color, h5_path, ions_to_proce
         return
 
     try:
-        with h5py.File(h5_path, 'r') as f: all_wl, all_spectra = f['Wavelengths'][:], f['Spectra'][:]
-        time_step_ms = 1.6
-        time_axis_ms = (np.arange(all_spectra.shape[0]) * time_step_ms) + formation_time
+        # --- INICIO DE LA CORRECCIÓN ---
+        with h5py.File(h5_path, 'r') as f:
+            all_wl, all_spectra = f['Wavelengths'][:], f['Spectra'][:]
+            
+            # Cargar el vector de tiempo REAL del archivo H5
+            if 'Time' in f:
+                # Asumir que el tiempo está en SEGUNDOS y convertir a ms
+                time_axis_ms = f['Time'][:] * 1000.0
+            else:
+                # Si no existe, usar la lógica anterior como fallback (pero advertir)
+                print("ADVERTENCIA: No se encontró 'Time' en H5. Usando lógica de 'formation_time'.")
+                time_step_ms = 1.6 
+                time_axis_ms = (np.arange(all_spectra.shape[0]) * time_step_ms) + formation_time
+        # --- FIN DE LA CORRECCIÓN ---
+
         baseline_frames_count = 3
         color_shades = [lighten_color(shot_color, amount=i * 0.25) for i in range(len(ions_to_process))]
         
@@ -182,6 +195,9 @@ def plot_ion_evolution_on_ax(ax, shot_number, shot_color, h5_path, ions_to_proce
                 for s in all_spectra
             ]
             intensities_np = np.array(raw_intensities)
+            
+            # La lógica de baseline ahora funcionará, ya que los primeros frames
+            # corresponderán al tiempo real (antes del plasma)
             baseline_level = np.min(intensities_np[:baseline_frames_count])
             corrected_intensities = np.maximum(intensities_np - baseline_level, 0) * scale_factor
             final_evolution = np.maximum(savgol_filter(corrected_intensities, 5, 2), 0) if len(corrected_intensities) > 5 else np.maximum(corrected_intensities, 0)
@@ -192,17 +208,28 @@ def plot_ion_evolution_on_ax(ax, shot_number, shot_color, h5_path, ions_to_proce
     except Exception as e:
         print(f"Error en ploteo de iones: {e}"); ax.text(0.5, 0.5, f'Error: {e}', transform=ax.transAxes, ha='center', color='red')
 
+# En spectrometry_analyzer.py
+
 def get_ion_evolution(h5_path, ions_to_process, scaling_dict, formation_time):
     """
     Calcula la evolución temporal para una lista de iones dada y la devuelve.
     No grafica nada, solo calcula.
     """
     results = {}
+
     with h5py.File(h5_path, 'r') as f:
         all_wl, all_spectra = f['Wavelengths'][:], f['Spectra'][:]
-    
-    time_step_ms = 1.6
-    time_axis_ms = (np.arange(all_spectra.shape[0]) * time_step_ms) + formation_time
+        
+        # Cargar el vector de tiempo REAL del archivo H5
+        if 'Time' in f:
+            # Asumir que el tiempo está en SEGUNDOS y convertir a ms
+            time_axis_ms = f['Time'][:] * 1000.0
+        else:
+            # Si no existe, usar la lógica anterior como fallback (pero advertir)
+            print("ADVERTENCIA: No se encontró 'Time' en H5. Usando lógica de 'formation_time'.")
+            time_step_ms = 1.6
+            time_axis_ms = (np.arange(all_spectra.shape[0]) * time_step_ms) + formation_time
+
     baseline_frames_count = 3
 
     for ion_label, center_wl in ions_to_process:

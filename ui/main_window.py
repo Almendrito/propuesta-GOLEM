@@ -31,7 +31,7 @@ class TokamakDataViewer:
         self.ion_sidebar_panel = None
         self.color_palette = ['#003f5c', '#7a5195', '#ef5675', '#ffa600']
         self.image_refs = []
-        self.spec_peak_height = 150 
+        self.spec_peak_height = 250 
         self.filter_enabled = False
         self.cursor_dynamics_enabled = False
         self.savgol_window = 9
@@ -54,17 +54,17 @@ class TokamakDataViewer:
         self.top_button_frame.pack(side=tk.TOP, fill=tk.X)
         tk.Button(self.top_button_frame, text="Load Shot", command=self.load_shot).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(self.top_button_frame, text="Load Local", command=self.load_local_shot).pack(side=tk.LEFT, padx=5, pady=5)
-        tk.Button(self.top_button_frame, text="Clear Shots", command=self.clear_shots).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.top_button_frame, text="Remove Shot(s)", command=self.remove_shot).pack(side=tk.LEFT, padx=5, pady=5)
 
         # --- NUEVO CONTROL DE UMBRAL EN TIEMPO REAL ---
-        #tk.Label(self.top_button_frame, text="Peak Threshold:").pack(side=tk.LEFT, padx=(10,0))
-        #self.peak_threshold_var = tk.StringVar(value=str(self.spec_peak_height))
-        #threshold_entry = tk.Entry(self.top_button_frame, width=6, textvariable=self.peak_threshold_var)
-        #threshold_entry.pack(side=tk.LEFT, padx=5)
-        #threshold_entry.bind("<Return>", self.on_threshold_change)
-        #threshold_entry.bind("<FocusOut>", self.on_threshold_change)
+        tk.Label(self.top_button_frame, text="Peak Threshold:").pack(side=tk.LEFT, padx=(10,0))
+        self.peak_threshold_var = tk.StringVar(value=str(self.spec_peak_height))
+        threshold_entry = tk.Entry(self.top_button_frame, width=6, textvariable=self.peak_threshold_var)
+        threshold_entry.pack(side=tk.LEFT, padx=5)
+        threshold_entry.bind("<Return>", self.on_threshold_change)
+        threshold_entry.bind("<FocusOut>", self.on_threshold_change)
 
-        #tk.Button(self.top_button_frame, text="Visualizar Picos", command=self.visualize_spectrum_peaks).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(self.top_button_frame, text="Visualizar Picos", command=self.visualize_spectrum_peaks).pack(side=tk.LEFT, padx=5, pady=5)
         self.cursor_toggle_button = tk.Button(self.top_button_frame, text="Enable Cursor", command=self.toggle_cursor_dynamics)
         self.cursor_toggle_button.pack(side=tk.LEFT, padx=5, pady=5)
         self.sidebar_button = tk.Button(self.top_button_frame, text="Panel de Iones", command=self.show_ion_sidebar)
@@ -169,6 +169,7 @@ class TokamakDataViewer:
         img_label.bind("<Button-1>", lambda e, p=image_path: self.open_in_system_viewer(p))
 
 
+
     def plot_data(self):
         for ax in self.fig.get_axes():
             ax.clear()
@@ -207,7 +208,7 @@ class TokamakDataViewer:
                     ions_to_process = []
             else:
                 ions_to_process = all_detected_ions
-                scaling_dict = {ion: 1.0 for ion, wl in all_detected_ions}
+                scaling_dict = {ion: 1.0 for (ion, wl) in all_detected_ions} # Corregido: la clave es una tupla
 
             spectrometry_analyzer.plot_ion_evolution_on_ax(
                 ax=ax_spec, shot_number=shot, shot_color=color,
@@ -217,50 +218,108 @@ class TokamakDataViewer:
                 formation_time=data.get('formation_time', 0.0)
             )
 
-        # --- Configuración final de los ejes y la leyenda (COMPLETA) ---
+        # --- Configuración final de los ejes y la leyenda (CORREGIDA) ---
         labels = [
             ['Bt [T]', 'Ip [kA]'], 
             ['U_loop [V]', 'ne [m^-3]'], 
             ['Desplazamiento [mm]', 'Te [eV]'], 
             ['τ_e [μs]', 'Evolución Iones [U.A.]']
         ]
+        
         for i in range(4):
             for j in range(2):
                 ax = self.axs[i, j]
                 ax.grid(True, which='both', linestyle='--', linewidth=0.5)
                 # Solo mostrar etiquetas del eje X en la última fila
                 ax.tick_params(axis='x', labelbottom=(i == 3))
-                
-                if ax.has_data():
-                    num_columns = len(self.shots) if (i, j) == (3, 1) else 1
-                    ax.legend(fontsize=20, loc='best', ncol=num_columns)
-                
                 ax.set_ylabel(labels[i][j])
+                
+                # --- LÓGICA DE LEYENDA SIMPLIFICADA ---
+                if ax.has_data():
+                    if (i, j) == (3, 1): # Eje de Iones
+                        num_columns = len(self.shots) if self.shots else 1
+                        ax.legend(fontsize=6, loc='best', ncol=num_columns, frameon=False)
+                    else: # Todos los demás ejes con datos
+                        ax.legend(loc='best')
                 
                 # Asegurar que el eje X esté compartido correctamente
                 if not (i == 0 and j == 0):
                     ax.sharex(self.axs[0, 0])
-                           # Dentro de la función plot_data, en el bucle for de configuración de ejes
-
-                if (i, j) == (3, 1): # Solo para el subplot de iones
-                    num_columns = len(self.shots) if self.shots else 1
-                    # CAMBIO: Usar bbox_to_anchor para colocarla fuera, a la derecha
-                    ax.legend(fontsize=6, loc='best', ncol=num_columns,frameon=False)
-                else:
-                    ax.legend(loc='best')
+        
         self.axs[3,0].set_xlabel('Tiempo [ms]')
         self.axs[3,1].set_xlabel('Tiempo [ms]')
         
-        #self.fig.tight_layout(pad=1.0)
         self.canvas.draw()
 
-    def clear_shots(self):
-        self.shots.clear(); self.current_shot = None; self.image_refs.clear()
+    def clear_all_shots(self): # <--- Nombre cambiado
+        self.shots.clear()
+        self.current_shot = None
+        self.image_refs.clear() # Esto funciona igual para un diccionario
         if self.ion_sidebar_panel and tk.Toplevel.winfo_exists(self.ion_sidebar_panel):
             self.ion_sidebar_panel.destroy()
-        for widget in self.png_frame.winfo_children(): widget.destroy()
+        for widget in self.png_frame.winfo_children():
+            widget.destroy()
         self.plot_data()
 
+
+    def remove_shot(self):
+        """
+        Abre un diálogo para eliminar un disparo específico o todos los disparos.
+        """
+        # 1. Comprobar si hay disparos que eliminar
+        if not self.shots:
+            messagebox.showinfo("Sin Datos", "No hay disparos cargados para eliminar.")
+            return
+
+        # 2. Preguntar al usuario qué disparo eliminar, con la opción de borrar todos
+        shot_to_remove = simpledialog.askinteger(
+            "Remove Shot(s)",
+            "Introduce el número del disparo a eliminar.\n\n(O introduce 0 para eliminarlos TODOS)",
+            parent=self.root
+        )
+
+        # Si el usuario cancela, el valor es None
+        if shot_to_remove is None:
+            return 
+
+        # 3. Si el usuario introduce 0, llamar a la función que borra todo
+        if shot_to_remove == 0:
+            self.clear_all_shots() # Reutilizamos el método que ya existe
+            return
+
+        # --- De aquí en adelante, es la misma lógica para borrar un solo disparo ---
+        
+        if shot_to_remove not in self.shots:
+            messagebox.showerror("Error", f"El disparo #{shot_to_remove} no está cargado en la sesión.")
+            return
+
+        # Eliminar los datos del disparo
+        print(f"Eliminando disparo #{shot_to_remove}...")
+        del self.shots[shot_to_remove]
+
+        # Eliminar la imagen y su referencia
+        if shot_to_remove in self.image_refs:
+            del self.image_refs[shot_to_remove]
+        
+        for widget in self.png_frame.winfo_children():
+            if hasattr(widget, "shot_number") and widget.shot_number == shot_to_remove:
+                widget.destroy()
+                break
+
+        # Actualizar el estado de la aplicación
+        if self.current_shot == shot_to_remove:
+            self.current_shot = None
+        
+        # Actualizar el panel de iones si está abierto
+        if self.ion_sidebar_panel and tk.Toplevel.winfo_exists(self.ion_sidebar_panel):
+            new_ions_for_panel = {shot: data.get('shot_ions_data', []) for shot, data in self.shots.items()}
+            if not any(new_ions_for_panel.values()):
+                self.ion_sidebar_panel.destroy()
+            else:
+                self.ion_sidebar_panel.update_ions(new_ions_for_panel)
+
+        # Volver a dibujar las gráficas
+        self.plot_data()
     def show_ion_sidebar(self):
         if not self.shots: messagebox.showwarning("Sin datos", "Carga un disparo."); return
         ions_for_panel = {shot: data.get('shot_ions_data', []) for shot, data in self.shots.items()}
@@ -285,7 +344,10 @@ class TokamakDataViewer:
         Se activa al cambiar el valor del umbral. Redetecta los iones y
         actualiza las gráficas y el panel sin recargar todo el disparo.
         """
-        if not self.current_shot: return
+        if not self.shots: return
+        current_shot_number = self.current_shot
+        if not current_shot_number: return
+
         try:
             new_threshold = int(self.peak_threshold_var.get())
             if new_threshold <= 0: return
@@ -293,20 +355,24 @@ class TokamakDataViewer:
             print(f"Nuevo umbral de picos: {self.spec_peak_height}")
 
             # --- LÓGICA DE ACTUALIZACIÓN EN TIEMPO REAL ---
-            current_shot_data = self.shots[self.current_shot]
-            h5_path = current_shot_data.get('h5_path')
+            # Actualizamos para todos los disparos cargados que tengan datos de espectrómetro
+            for shot_num, shot_data in self.shots.items():
+                h5_path = shot_data.get('h5_path')
+                if h5_path and self.nist_df is not None:
+                    # 1. Volver a detectar iones con el nuevo umbral (USANDO EL NOMBRE CORRECTO)
+                    ions, wls = spectrometry_analyzer._detect_main_ions_for_panel(
+                        h5_path, self.nist_df, peak_height=self.spec_peak_height
+                    )
+                    detected_ions = list(zip(ions, wls))
+                    
+                    # 2. Actualizar la lista de iones del disparo actual
+                    shot_data['shot_ions_data'] = detected_ions
             
-            # 1. Volver a detectar iones con el nuevo umbral
-            detected_ions = spectrometry_analyzer.detect_ions_in_shot(h5_path, self.nist_df, self.spec_peak_height)
-            
-            # 2. Actualizar la lista de iones del disparo actual
-            current_shot_data['shot_ions_data'] = detected_ions
-            
-            # 3. Si el panel de iones está abierto, cerrarlo para forzar su recreación con la nueva lista
+            # 3. Si el panel de iones está abierto, actualizarlo en lugar de destruirlo
             if self.ion_sidebar_panel and tk.Toplevel.winfo_exists(self.ion_sidebar_panel):
-                self.ion_sidebar_panel.destroy()
-                self.ion_sidebar_panel = None
-                messagebox.showinfo("Panel Actualizado", "La lista de iones en el panel ha sido actualizada. Ábrelo de nuevo para ver los cambios.")
+                new_ions_for_panel = {shot: data.get('shot_ions_data', []) for shot, data in self.shots.items()}
+                self.ion_sidebar_panel.update_ions(new_ions_for_panel) # Llamamos al nuevo método
+                print("Panel de iones actualizado dinámicamente.")
             
             # 4. Volver a dibujar todas las gráficas
             self.plot_data()
@@ -387,18 +453,44 @@ class TokamakDataViewer:
         if not event.inaxes or not self.cursor_dynamics_enabled: return
         self.draw_cursor_at(event.xdata)
 
+
     def draw_cursor_at(self, x):
-        # ... (Pega aquí el método draw_cursor_at COMPLETO de main_app.py) ...
         if x is None: return
         self.last_cursor_x = x
-        for line in self.cursor_lines: line.remove()
+        
+        # Usamos un bloque try/except para borrar las líneas de forma segura
+        # Esto evita que el programa se caiga si una línea ya no existe
+        for line in self.cursor_lines:
+            try:
+                line.remove()
+            except Exception:
+                pass # Ignorar errores si la línea ya no existe o está huérfana
+        
         self.cursor_lines.clear()
 
         for ax_row in self.axs:
             for ax in ax_row:
                 self.cursor_lines.append(ax.axvline(x=x, color='gray', linestyle='--', linewidth=0.8))
 
-        header = "Shot\tTime(ms)\tBt(T)\tIp(kA)\tne(m-3)\tTe_0(eV)\ttau_e(us)"
+        # (El resto de tu código para el data_box_label va aquí, no cambia)
+        # 1. Definimos anchos fijos para cada columna
+        w_shot = 8
+        w_time = 10
+        w_bt = 8
+        w_ip = 8
+        w_ne = 12
+        w_te = 10
+        w_tau = 10
+
+        # 2. Cabeceras (todas alineadas a la izquierda '<')
+        header = (f"{'Shot':<{w_shot}}"
+                  f"{'Time(ms)':<{w_time}}"
+                  f"{'Bt(T)':<{w_bt}}"
+                  f"{'Ip(kA)':<{w_ip}}"
+                  f"{'ne(m-3)':<{w_ne}}"
+                  f"{'Te_0(eV)':<{w_te}}"
+                  f"{'tau_e(us)':<{w_tau}}")
+        
         data_table = [header]
         for shot, data in self.shots.items():
             vals = {}
@@ -407,19 +499,48 @@ class TokamakDataViewer:
                     idx = (df['time_ms'] - x).abs().idxmin()
                     for col in df.columns:
                         if col != 'time_ms': vals[col] = df.loc[idx, col]
-            row = (f"{shot}\t{x:.2f}\t"
-                   f"{vals.get('Bt', np.nan):.2f}\t{vals.get('Ip', np.nan):.2f}\t"
-                   f"{vals.get('ne', np.nan):.2e}\t{vals.get('Te_0', np.nan):.1f}\t"
-                   f"{vals.get('tau', np.nan) * 1e6:.1f}")
-            data_table.append(row.replace("nan", "---"))
+            
+            # 3. Formatear los números a strings primero
+            s_shot = f"{shot}"
+            s_time = f"{x:.2f}"
+            s_bt   = f"{vals.get('Bt', np.nan):.2f}"
+            s_ip   = f"{vals.get('Ip', np.nan):.2f}"
+            s_ne   = f"{vals.get('ne', np.nan):.2e}"
+            s_te   = f"{vals.get('Te_0', np.nan):.1f}"
+            s_tau  = f"{vals.get('tau', np.nan) * 1e6:.1f}"
+
+            # 4. Reemplazar 'nan' por '---' en los strings
+            s_bt = s_bt.replace("nan", "---")
+            s_ip = s_ip.replace("nan", "---")
+            s_ne = s_ne.replace("nan", "---")
+            s_te = s_te.replace("nan", "---")
+            s_tau = s_tau.replace("nan", "---")
+
+            # 5. Formatear los strings finales con alineación izquierda '<'
+            row = (f"{s_shot:<{w_shot}}"
+                   f"{s_time:<{w_time}}"
+                   f"{s_bt:<{w_bt}}"
+                   f"{s_ip:<{w_ip}}"
+                   f"{s_ne:<{w_ne}}"
+                   f"{s_te:<{w_te}}"
+                   f"{s_tau:<{w_tau}}")
+            
+            data_table.append(row)
 
         self.data_box_label.config(text="\n".join(data_table))
         self.canvas.draw_idle()
 
+# En la clase TokamakDataViewer (ui/main_window.py)
+
     def on_right_click(self, event):
-        # ... (Pega aquí el método on_right_click COMPLETO de main_app.py) ...
         if not event.inaxes or not self.cursor_dynamics_enabled or event.button != 3: return
         x = event.xdata
+        
+        # Usamos tabulaciones ('\t') aquí porque es para pegar en Excel/Hojas de Cálculo
+        # El problema anterior era solo de VISUALIZACIÓN en el Label.
+        # Para el portapapeles, las tabulaciones son lo correcto.
+        # PERO, el error de 'nan' debe corregirse.
+
         clipboard_text = "Shot\tTime(ms)\tBt(T)\tIp(kA)\tne(m-3)\tTe_0(eV)\ttau_e(us)\n"
         for shot, data in self.shots.items():
             vals = {}
@@ -428,11 +549,23 @@ class TokamakDataViewer:
                     idx = (df['time_ms'] - x).abs().idxmin()
                     for col in df.columns:
                         if col != 'time_ms': vals[col] = df.loc[idx, col]
+            
+            # Creamos los valores primero
+            val_bt = f"{vals.get('Bt', np.nan):.2f}"
+            val_ip = f"{vals.get('Ip', np.nan):.2f}"
+            val_ne = f"{vals.get('ne', np.nan):.2e}"
+            val_te = f"{vals.get('Te_0', np.nan):.1f}"
+            val_tau = f"{vals.get('tau', np.nan) * 1e6:.1f}"
+
+            # Construimos la fila
             row = (f"{shot}\t{x:.2f}\t"
-                   f"{vals.get('Bt', np.nan):.2f}\t{vals.get('Ip', np.nan):.2f}\t"
-                   f"{vals.get('ne', np.nan):.2e}\t{vals.get('Te_0', np.nan):.1f}\t"
-                   f"{vals.get('tau', np.nan) * 1e6:.1f}\n")
+                   f"{val_bt}\t{val_ip}\t"
+                   f"{val_ne}\t{val_te}\t"
+                   f"{val_tau}\n")
+            
+            # Reemplazamos 'nan' por una cadena vacía para limpiar la salida
             clipboard_text += row.replace("nan", "")
+            
         pyperclip.copy(clipboard_text)
         messagebox.showinfo("Copiado", "Datos del cursor copiados al portapapeles.")
         

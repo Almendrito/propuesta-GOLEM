@@ -14,58 +14,88 @@ class IonSidebarPanel(tk.Toplevel):
         self.shot_ions_dict = shot_ions_dict; self.on_update = on_update
         self.ion_vars = {}; self.scale_vars = {}
 
+        self.main_container = tk.Frame(self)
+        self.main_container.pack(fill="both", expand=True)
+
+        self.build_ui(shot_ions_dict)
+
         canvas = tk.Canvas(self, borderwidth=0)
         vscrollbar = tk.Scrollbar(self, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=vscrollbar.set)
         vscrollbar.pack(side="right", fill="y"); canvas.pack(side="left", fill="both", expand=True)
         frame = tk.Frame(canvas); canvas.create_window((0, 0), window=frame, anchor="nw")
-        def _on_frame_configure(event): canvas.configure(scrollregion=canvas.bbox("all"))
-        frame.bind("<Configure>", _on_frame_configure)
 
-        title = tk.Label(frame, text="Panel de Iones por Disparo", font=("Arial", 12, "bold"))
-        title.grid(row=0, column=0, columnspan=max(1, len(shot_ions_dict)), sticky="w", pady=3)
+    def build_ui(self, shot_ions_dict):
+            """Construye o reconstruye la interfaz de usuario del panel."""
+            # Limpiar widgets anteriores si existen
+            for widget in self.main_container.winfo_children():
+                widget.destroy()
 
-        shot_labels = list(shot_ions_dict.keys())
-        for col, shot in enumerate(shot_labels):
-            lbl = tk.Label(frame, text=f"Shot #{shot}", font=("Arial", 10, "bold"))
-            lbl.grid(row=1, column=col, sticky="n", padx=5)
+            self.shot_ions_dict = shot_ions_dict
+            self.ion_vars.clear()
+            self.scale_vars.clear()
 
-        # --- LÓGICA CORREGIDA PARA OBTENER TODAS LAS LÍNEAS ÚNICAS ---
-        all_ion_lines = set()
-        for ions_list in shot_ions_dict.values():
-            all_ion_lines.update(ions_list) # Añadir las tuplas (ion, wl)
-        all_ion_lines = sorted(list(all_ion_lines), key=lambda x: x[1]) # Ordenar por longitud de onda
+            canvas = tk.Canvas(self.main_container, borderwidth=0)
+            vscrollbar = tk.Scrollbar(self.main_container, orient="vertical", command=canvas.yview)
+            canvas.configure(yscrollcommand=vscrollbar.set)
+            vscrollbar.pack(side="right", fill="y")
+            canvas.pack(side="left", fill="both", expand=True)
+            frame = tk.Frame(canvas)
+            canvas.create_window((0, 0), window=frame, anchor="nw")
+            
+            def _on_frame_configure(event):
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            frame.bind("<Configure>", _on_frame_configure)
 
-        for row, (ion_name, ion_wl) in enumerate(all_ion_lines, start=2):
+            title = tk.Label(frame, text="Panel de Iones por Disparo", font=("Arial", 12, "bold"))
+            title.grid(row=0, column=0, columnspan=max(1, len(shot_ions_dict)), sticky="w", pady=3)
+
+            shot_labels = list(shot_ions_dict.keys())
             for col, shot in enumerate(shot_labels):
-                f = tk.Frame(frame); f.grid(row=row, column=col, sticky="w", padx=5)
-                
-                # Chequear si esta línea espectral específica existe en el disparo
-                ion_exists_in_shot = (ion_name, ion_wl) in shot_ions_dict.get(shot, [])
-                
-                if ion_exists_in_shot:
-                    # La clave ahora es la tupla completa, para ser única
-                    key = (shot, (ion_name, ion_wl))
-                    checkbox_label = f"{ion_name} {ion_wl:.1f} nm"
-                    
-                    var = tk.BooleanVar(value=True)
-                    scale_var = tk.DoubleVar(value=1.0)
-                    self.ion_vars[key] = var
-                    self.scale_vars[key] = scale_var
-                    
-                    cb = tk.Checkbutton(f, text=checkbox_label, variable=var, command=self.on_update)
-                    cb.pack(side=tk.LEFT)
-                    tk.Label(f, text=" x ").pack(side=tk.LEFT)
-                    entry = tk.Entry(f, width=5, textvariable=scale_var)
-                    entry.pack(side=tk.LEFT)
-                    entry.bind("<Return>", lambda e: self.on_update())
-                    entry.bind("<FocusOut>", lambda e: self.on_update())
-                else:
-                    tk.Label(f, text="—", anchor="w").pack(side=tk.LEFT, padx=10)
-        
-        tk.Button(frame, text="Actualizar Gráfica", command=self.on_update)\
-            .grid(row=len(all_ion_lines) + 2, column=0, columnspan=max(1, len(shot_labels)), pady=6)
+                lbl = tk.Label(frame, text=f"Shot #{shot}", font=("Arial", 10, "bold"))
+                lbl.grid(row=1, column=col, sticky="n", padx=5)
 
+            # --- LÓGICA CORREGIDA PARA OBTENER TODAS LAS LÍNEAS ÚNICAS ---
+            all_ion_lines = set()
+            for ions_list in shot_ions_dict.values():
+                all_ion_lines.update(ions_list) # Añadir las tuplas (ion, wl)
+            all_ion_lines = sorted(list(all_ion_lines), key=lambda x: x[1]) # Ordenar por longitud de onda
+
+            for row, (ion_name, ion_wl) in enumerate(all_ion_lines, start=2):
+                for col, shot in enumerate(shot_labels):
+                    f = tk.Frame(frame); f.grid(row=row, column=col, sticky="w", padx=5)
+                    
+                    # Chequear si esta línea espectral específica existe en el disparo
+                    ion_exists_in_shot = (ion_name, ion_wl) in shot_ions_dict.get(shot, [])
+                    
+                    if ion_exists_in_shot:
+                        # La clave ahora es la tupla completa, para ser única
+                        key = (shot, (ion_name, ion_wl))
+                        checkbox_label = f"{ion_name} {ion_wl:.1f} nm"
+                        
+                        var = tk.BooleanVar(value=True)
+                        scale_var = tk.DoubleVar(value=1.0)
+                        self.ion_vars[key] = var
+                        self.scale_vars[key] = scale_var
+                        
+                        cb = tk.Checkbutton(f, text=checkbox_label, variable=var, command=self.on_update)
+                        cb.pack(side=tk.LEFT)
+                        tk.Label(f, text=" x ").pack(side=tk.LEFT)
+                        entry = tk.Entry(f, width=5, textvariable=scale_var)
+                        entry.pack(side=tk.LEFT)
+                        entry.bind("<Return>", lambda e: self.on_update())
+                        entry.bind("<FocusOut>", lambda e: self.on_update())
+                    else:
+                        tk.Label(f, text="—", anchor="w").pack(side=tk.LEFT, padx=10)
+            
+            tk.Button(frame, text="Actualizar Gráfica", command=self.on_update)\
+                .grid(row=len(all_ion_lines) + 2, column=0, columnspan=max(1, len(shot_labels)), pady=6)
+
+    def update_ions(self, new_shot_ions_dict):
+        """
+        Método público para reconstruir el panel con una nueva lista de iones.
+        """
+        self.build_ui(new_shot_ions_dict)
     def get_active_ions_and_scales(self):
         active_ions = {}
         for (shot, ion_tuple), var in self.ion_vars.items():
