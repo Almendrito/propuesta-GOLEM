@@ -181,7 +181,7 @@ def plot_ion_evolution_on_ax(ax, shot_number, shot_color, h5_path, ions_to_proce
             else:
                 # Si no existe, usar la lógica anterior como fallback (pero advertir)
                 print("ADVERTENCIA: No se encontró 'Time' en H5. Usando lógica de 'formation_time'.")
-                time_step_ms = 1.6 
+                time_step_ms = 1.67
                 time_axis_ms = (np.arange(all_spectra.shape[0]) * time_step_ms) + formation_time
         # --- FIN DE LA CORRECCIÓN ---
 
@@ -203,7 +203,7 @@ def plot_ion_evolution_on_ax(ax, shot_number, shot_color, h5_path, ions_to_proce
             final_evolution = np.maximum(savgol_filter(corrected_intensities, 5, 2), 0) if len(corrected_intensities) > 5 else np.maximum(corrected_intensities, 0)
 
             if np.max(final_evolution) > 0:
-                ax.plot(time_axis_ms, final_evolution, color=color_shades[i], label=f"{ion_label} {center_wl:.1f} nm")
+                ax.plot(time_axis_ms, final_evolution, color=color_shades[i], label=f"{ion_label} {center_wl:.1f} nm",picker=5)
 
     except Exception as e:
         print(f"Error en ploteo de iones: {e}"); ax.text(0.5, 0.5, f'Error: {e}', transform=ax.transAxes, ha='center', color='red')
@@ -227,7 +227,7 @@ def get_ion_evolution(h5_path, ions_to_process, scaling_dict, formation_time):
         else:
             # Si no existe, usar la lógica anterior como fallback (pero advertir)
             print("ADVERTENCIA: No se encontró 'Time' en H5. Usando lógica de 'formation_time'.")
-            time_step_ms = 1.6
+            time_step_ms = 1.67
             time_axis_ms = (np.arange(all_spectra.shape[0]) * time_step_ms) + formation_time
 
     baseline_frames_count = 3

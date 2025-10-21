@@ -1,5 +1,3 @@
-# ui/main_window.py
-
 import tkinter as tk
 from tkinter import simpledialog, messagebox
 import pandas as pd
@@ -85,13 +83,23 @@ class TokamakDataViewer:
         self.toolbar.update()
         self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
         canvas_widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        self.data_box_label = tk.Label(self.toolbar, text="", font=("Courier New", 8))
+        self.data_box_label = tk.Label(self.toolbar, text="", font=("Arial", 8))
         self.data_box_label.pack(side=tk.LEFT, padx=10)
+
+        # --- REEMPLAZA la línea de self.ion_pick_label CON ESTA ---
+        self.ion_hover_label = tk.Label(self.toolbar, text="", font=("Arial", 9, "bold"), anchor='w')
+        self.ion_hover_label.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
+        #self.ion_pick_label.pack(side=tk.RIGHT, padx=10)
+        self.canvas.mpl_connect('motion_notify_event', self.on_hover_ion_axes)
 
         self.right_panel = tk.Frame(self.main_frame, bg='white')
         self.right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False,padx=(0, 5))
+        self.ion_legend_frame = tk.Frame(self.right_panel, bg='white', padx=10, pady=5)
+        self.ion_legend_frame.pack(side=tk.TOP, fill=tk.X, expand=False)
         self.png_frame = tk.Frame(self.right_panel, bg='white')
         self.png_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.ion_legend_frame = tk.Frame(self.right_panel, bg='white', padx=10, pady=5)
+        self.ion_legend_frame.pack(side=tk.BOTTOM, fill=tk.X, expand=False)
         self.cursor_lines = []
         self.canvas.draw()
 
@@ -225,7 +233,7 @@ class TokamakDataViewer:
             ['Desplazamiento [mm]', 'Te [eV]'], 
             ['τ_e [μs]', 'Evolución Iones [U.A.]']
         ]
-        
+        ion_handles, ion_labels = [], []
         for i in range(4):
             for j in range(2):
                 ax = self.axs[i, j]
@@ -237,8 +245,9 @@ class TokamakDataViewer:
                 # --- LÓGICA DE LEYENDA SIMPLIFICADA ---
                 if ax.has_data():
                     if (i, j) == (3, 1): # Eje de Iones
-                        num_columns = len(self.shots) if self.shots else 1
-                        ax.legend(fontsize=6, loc='best', ncol=num_columns, frameon=False)
+                        ion_handles, ion_labels = ax.get_legend_handles_labels()
+                        if ax.get_legend():
+                            ax.legend().remove()
                     else: # Todos los demás ejes con datos
                         ax.legend(loc='best')
                 
@@ -248,9 +257,93 @@ class TokamakDataViewer:
         
         self.axs[3,0].set_xlabel('Tiempo [ms]')
         self.axs[3,1].set_xlabel('Tiempo [ms]')
+
+        self._build_external_ion_legend(ion_handles, ion_labels)
         
         self.canvas.draw()
 
+    def on_hover_ion_axes(self, event):
+        """
+        Se activa al mover el mouse. Muestra qué línea de ion está
+        debajo del cursor.
+        """
+        # Eje de interés (Evolución de Iones)
+        ion_ax = self.axs[3, 1]
+        
+        # Si el mouse está dentro del eje de iones
+        if event.inaxes == ion_ax:
+            found_labels = []
+            # Revisamos todas las líneas en ese eje
+            for line in ion_ax.get_lines():
+                # Verificamos si el mouse "contiene" (está sobre) la línea
+                contains, _ = line.contains(event)
+                if contains:
+                    label = line.get_label()
+                    # Ignoramos líneas de 'fallback' de matplotlib
+                    if not label.startswith('_'):
+                        found_labels.append(label)
+
+            if found_labels:
+                # Si encuentra líneas (incluso solapadas), las une
+                display_text = " | ".join(found_labels)
+                self.ion_hover_label.config(text=display_text, foreground="black")
+            else:
+                # Si está en el eje pero no sobre una línea
+                self.ion_hover_label.config(text="Mueve el mouse sobre una línea...", foreground="gray")
+        else:
+            # Si el mouse está fuera del eje de iones, limpiamos el texto
+            self.ion_hover_label.config(text="", foreground="gray")
+    def _build_external_ion_legend(self, handles, labels):
+        """
+        Limpia y reconstruye la leyenda de iones en el panel lateral (self.ion_legend_frame).
+        """
+        # 1. Limpiar leyenda anterior
+        for widget in self.ion_legend_frame.winfo_children():
+            widget.destroy()
+
+        if not handles:
+            return # No hay nada que dibujar
+
+        # 2. Añadir un título
+        tk.Label(
+            self.ion_legend_frame, 
+            text="Leyenda de Iones", 
+            font=("Arial", 9, "bold"), 
+            bg='white'
+        ).pack(anchor='w')
+
+        # 3. Crear la leyenda línea por línea
+        num_cols = max(1, len(handles) // 10) # Poner en 2 columnas si es muy larga
+        col_frame = None
+        
+        for i, (handle, label) in enumerate(zip(handles, labels)):
+            # Crear un nuevo frame de columna si es necesario
+            if i % 10 == 0:
+                col_frame = tk.Frame(self.ion_legend_frame, bg='white')
+                col_frame.pack(side=tk.LEFT, fill=tk.X, anchor='n', padx=5)
+
+            color = handle.get_color()
+            
+            # Contenedor para una línea de leyenda
+            line_f = tk.Frame(col_frame, bg='white')
+            
+            # El símbolo de línea
+            tk.Label(
+                line_f, text='—', 
+                fg=color, 
+                bg='white', 
+                font=('Courier New', 10, 'bold')
+            ).pack(side=tk.LEFT)
+            
+            # El texto
+            tk.Label(
+                line_f, 
+                text=label, 
+                bg='white', 
+                font=("Courier New", 8)
+            ).pack(side=tk.LEFT, padx=4)
+            
+            line_f.pack(anchor='w')
     def clear_all_shots(self): # <--- Nombre cambiado
         self.shots.clear()
         self.current_shot = None
@@ -380,39 +473,146 @@ class TokamakDataViewer:
         except ValueError:
             self.peak_threshold_var.set(str(self.spec_peak_height)) # Revertir si no es un número válido
 
+
+
     def visualize_spectrum_peaks(self):
-        if not self.current_shot: messagebox.showwarning("Sin datos", "Carga un disparo."); return
-        shot_data = self.shots[self.current_shot]; h5_path = shot_data.get('h5_path')
-        if not h5_path or not os.path.exists(h5_path): messagebox.showerror("Error", "No se encontró archivo .h5."); return
+        """
+        Abre una ventana con un slider para analizar el espectro y los picos
+        detectados en cualquier frame del disparo. Permite seleccionar el disparo.
+        """
+        # --- INICIO DE LA CORRECCIÓN 1: SELECCIÓN DE DISPARO ---
+        if not self.shots:
+            messagebox.showwarning("Sin datos", "Carga un disparo antes de visualizar los picos.")
+            return
+
+        shot_list = list(self.shots.keys())
+        shot_to_analyze = None
+
+        if len(shot_list) == 1:
+            shot_to_analyze = shot_list[0]
+        else:
+            # Preguntar al usuario si hay múltiples disparos
+            shot_to_analyze = simpledialog.askinteger(
+                "Seleccionar Disparo",
+                "Introduce el número del disparo para analizar los picos:",
+                parent=self.root,
+                initialvalue=self.current_shot if self.current_shot else shot_list[0]
+            )
+
+        if shot_to_analyze is None: # El usuario canceló
+            return
+        
+        if shot_to_analyze not in self.shots:
+            messagebox.showerror("Error", f"El disparo #{shot_to_analyze} no está cargado.")
+            return
+
+        shot_data = self.shots[shot_to_analyze]
+        h5_path = shot_data.get('h5_path')
+        # --- FIN DE LA CORRECCIÓN 1 ---
+
+        if not h5_path or not os.path.exists(h5_path):
+            messagebox.showerror("Error", f"No se encontró el archivo .h5 para el disparo {shot_to_analyze}.")
+            return
+
         try:
-            with h5py.File(h5_path, 'r') as f: all_wl, all_spectra = f['Wavelengths'][:], f['Spectra'][:]
-            total_frames = all_spectra.shape[0]; ref_idx = np.argmax(np.sum(all_spectra, axis=1))
-            peak_window = tk.Toplevel(self.root); peak_window.title(f"Picos - Disparo #{self.current_shot}"); peak_window.geometry("900x650")
-            fig, ax = plt.subplots(); fig.subplots_adjust(bottom=0.2)
-            canvas = FigureCanvasTkAgg(fig, master=peak_window); NavigationToolbar2Tk(canvas, peak_window).update()
+            # --- INICIO DE LA CORRECCIÓN 2: CARGAR VECTOR DE TIEMPO REAL ---
+            with h5py.File(h5_path, 'r') as f:
+                all_wl, all_spectra = f['Wavelengths'][:], f['Spectra'][:]
+                
+                # Cargar el vector de tiempo REAL del archivo H5
+                if 'Time' in f:
+                    # Asumir que el tiempo está en SEGUNDOS y convertir a ms
+                    time_vector_ms = f['Time'][:] * 1000.0
+                else:
+                    # Fallback si no existe (usando 2.0ms como pediste, aunque esto es menos preciso)
+                    print("ADVERTENCIA (Picos): No se encontró 'Time' en H5. Usando time_step=2.0ms.")
+                    time_vector_ms = np.arange(all_spectra.shape[0]) * 2.0 
+            # --- FIN DE LA CORRECCIÓN 2 ---
+            
+            total_frames = all_spectra.shape[0]
+            ref_idx = np.argmax(np.sum(all_spectra, axis=1)) # Frame inicial sugerido
+
+            # --- Creación de la Ventana y Layout (con título actualizado) ---
+            peak_window = tk.Toplevel(self.root)
+            peak_window.title(f"Análisis de Picos - Disparo #{shot_to_analyze}") # Título actualizado
+            peak_window.geometry("900x650")
+
+            # Frame principal para la gráfica y la barra de herramientas
+            plot_frame = tk.Frame(peak_window)
+            plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+            
+            fig, ax = plt.subplots()
+            fig.subplots_adjust(bottom=0.2) # Dejar espacio para el slider
+            canvas = FigureCanvasTkAgg(fig, master=plot_frame)
+            toolbar = NavigationToolbar2Tk(canvas, plot_frame)
+            toolbar.update()
             canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
             
+            # --- Función de Actualización de la Gráfica ---
             def update_plot(frame_idx_float):
-                frame_idx = int(frame_idx_float); ax.clear()
+                frame_idx = int(frame_idx_float)
+                
+                # --- CORRECCIÓN 2: USAR EL TIEMPO REAL ---
+                # Asegurarse de que el frame_idx no esté fuera de los límites del vector de tiempo
+                if frame_idx >= len(time_vector_ms):
+                    frame_idx = len(time_vector_ms) - 1
+                current_time_ms = time_vector_ms[frame_idx]
+                
+                ax.clear() # Limpiar la gráfica anterior
+
+                # Procesar el espectro para el frame seleccionado
                 spectrum = all_spectra[frame_idx]
-                smooth = savgol_filter(np.maximum(spectrum - savgol_filter(spectrum, 101, 3), 0), 5, 2)
-                ions, wls, intensities = spectrometry_analyzer._map_peaks(all_wl, smooth, self.nist_df, self.spec_peak_height, 5)
-                ax.plot(all_wl, smooth, label=f'Espectro Suavizado', color='cornflowerblue')
-                ax.axhline(y=self.spec_peak_height, color='r', linestyle='--', label=f'Umbral ({self.spec_peak_height})')
-                ax.scatter(wls, intensities, marker='x', color='red', s=50, zorder=5)
+                bg = savgol_filter(spectrum, spectrometry_analyzer.BASELINE_WIN, spectrometry_analyzer.BASELINE_POLY)
+                residual = np.maximum(spectrum - bg, 0)
+                smooth = savgol_filter(residual, spectrometry_analyzer.SMOOTH_WIN, spectrometry_analyzer.SMOOTH_POLY)
+
+                # Encontrar e identificar los picos con el umbral actual
+                ions, wls, intensities = spectrometry_analyzer._map_peaks(
+                    all_wl, smooth, self.nist_df, self.spec_peak_height, peak_distance=5
+                )
+
+                # Graficar los resultados
+                ax.plot(all_wl, smooth, label='Espectro Suavizado', color='cornflowerblue', linewidth=1.2)
+                ax.axhline(y=self.spec_peak_height, color='r', linestyle='--', label=f'Umbral ({self.spec_peak_height})', linewidth=1)
+                ax.scatter(wls, intensities, marker='x', color='red', s=50, zorder=5) # zorder para que esté encima
+
                 for ion, wl, intensity in zip(ions, wls, intensities):
-                    if ion != "Unknown": ax.text(wl, intensity * 1.05, f"{ion} {wl:.1f} nm", rotation=90, va='bottom', ha='center', fontsize=8)
-                ax.set_title(f"Análisis del Frame: {frame_idx} (Tiempo: {frame_idx * 1.6:.1f} ms)"); ax.set_xlabel("Longitud de Onda (nm)"); ax.set_ylabel("Intensidad (A.U.)")
-                ax.legend(); ax.grid(True, linestyle='--'); ax.set_xlim(400, 900); ax.set_ylim(bottom=0)
+                    if ion != "Unknown":
+                        label = f"{ion} {wl:.1f} nm"
+                        ax.text(wl, intensity * 1.05, label, rotation=90, va='bottom', ha='center', fontsize=8)
+
+                # --- CORRECCIÓN 2: USAR EL TIEMPO REAL EN EL TÍTULO ---
+                ax.set_title(f"Análisis del Frame: {frame_idx} (Tiempo: {2.0*int(frame_idx):.1f} ms)")
+                ax.set_xlabel("Longitud de Onda (nm)")
+                ax.set_ylabel("Intensidad (A.U.)")
+                ax.legend()
+                ax.grid(True, linestyle='--', alpha=0.6)
+                ax.set_xlim(spectrometry_analyzer.WL_MIN, spectrometry_analyzer.WL_MAX)
+                ax.set_ylim(bottom=0, top=np.max(residual) * 1.2 if np.max(residual) > 0 else 100)
+                
                 fig.canvas.draw_idle()
 
-            ax_slider = fig.add_axes([0.15, 0.05, 0.75, 0.03])
-            frame_slider = Slider(ax=ax_slider, label='Frame', valmin=0, valmax=total_frames - 1, valinit=ref_idx, valstep=1)
+            # --- Creación del Slider ---
+            ax_slider = fig.add_axes([0.15, 0.05, 0.75, 0.03]) # Posición del slider [left, bottom, width, height]
+            frame_slider = Slider(
+                ax=ax_slider,
+                label='Frame',
+                valmin=0,
+                valmax=total_frames - 1,
+                valinit=ref_idx,
+                valstep=1 # Moverse de 1 en 1 frame
+            )
             frame_slider.on_changed(update_plot)
+            
+            # Guardar referencia al slider para que no sea eliminado por el garbage collector
             peak_window.slider = frame_slider
+
+            # --- Dibujar la gráfica inicial ---
             update_plot(ref_idx)
+
         except Exception as e:
             messagebox.showerror("Error de Análisis", f"No se pudo analizar el espectro: {e}")
+            if 'peak_window' in locals(): peak_window.destroy()
 
 
     # --- Métodos del Cursor Dinámico ---
