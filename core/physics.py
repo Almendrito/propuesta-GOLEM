@@ -13,9 +13,9 @@ def electron_temperature_Spitzer_eV(eta_measured, Z_eff=3, eps=0, coulomb_logari
     (Esta es la función de main_app.py, convertida a una función normal sin 'self').
     """
     if not isinstance(eta_measured, pd.Series) or eta_measured.empty:
-        return pd.Series(dtype=float)
-    eta_s = eta_measured / Z_eff * (1 - np.sqrt(eps))**2
-    term = 1.96 * (eta_s *3*constants.epsilon_0**2) / (np.sqrt(constants.m_e) * constants.elementary_charge**2 * coulomb_logarithm)
+        return pd.Series(dtype=float)   
+    eta_s = eta_measured / Z_eff * (1 - np.sqrt(eps))**(-2)
+    term = 1.96 * eta_s * (3*constants.epsilon_0**2) / (np.sqrt(constants.m_e) * constants.elementary_charge**2 * coulomb_logarithm)
     Te_eV = (term )**(-2 / 3) / (constants.elementary_charge * 2 * np.pi)
     return Te_eV.replace([np.inf, -np.inf], np.nan)
 

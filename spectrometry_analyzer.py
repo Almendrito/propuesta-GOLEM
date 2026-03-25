@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from urllib.parse import urljoin
 from scipy.signal import savgol_filter, find_peaks
-from numpy import trapezoid as trapz
+from numpy import trapz
 
 # --- Constantes y Configuración del Módulo ---
 WL_MIN, WL_MAX          = 400, 900

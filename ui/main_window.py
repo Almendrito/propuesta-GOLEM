@@ -55,14 +55,13 @@ class TokamakDataViewer:
         tk.Button(self.top_button_frame, text="Remove Shot(s)", command=self.remove_shot).pack(side=tk.LEFT, padx=5, pady=5)
 
         # --- NUEVO CONTROL DE UMBRAL EN TIEMPO REAL ---
-        tk.Label(self.top_button_frame, text="Peak Threshold:").pack(side=tk.LEFT, padx=(10,0))
-        self.peak_threshold_var = tk.StringVar(value=str(self.spec_peak_height))
-        threshold_entry = tk.Entry(self.top_button_frame, width=6, textvariable=self.peak_threshold_var)
-        threshold_entry.pack(side=tk.LEFT, padx=5)
-        threshold_entry.bind("<Return>", self.on_threshold_change)
-        threshold_entry.bind("<FocusOut>", self.on_threshold_change)
+        # --- NUEVAS HERRAMIENTAS: MHD Y RUNAWAY ELECTRONS ---
+        tk.Button(self.top_button_frame, text="Análisis MHD (Mirnov)", 
+                  command=self.open_mhd_tool, bg="#e0e0e0").pack(side=tk.LEFT, padx=5, pady=5)
+        
+        tk.Button(self.top_button_frame, text="Runaway Electrons (HXR)", 
+                  command=self.open_runaway_tool, bg="#e0e0e0").pack(side=tk.LEFT, padx=5, pady=5)
 
-        tk.Button(self.top_button_frame, text="Visualizar Picos", command=self.visualize_spectrum_peaks).pack(side=tk.LEFT, padx=5, pady=5)
         self.cursor_toggle_button = tk.Button(self.top_button_frame, text="Enable Cursor", command=self.toggle_cursor_dynamics)
         self.cursor_toggle_button.pack(side=tk.LEFT, padx=5, pady=5)
         self.sidebar_button = tk.Button(self.top_button_frame, text="Panel de Iones", command=self.show_ion_sidebar)
@@ -901,6 +900,37 @@ class TokamakDataViewer:
             self.spec_peak_height = new_threshold
             print(f"Nuevo umbral de detección de picos establecido en: {self.spec_peak_height}")
             self.plot_data() # Volvemos a dibujar las gráficas con el nuevo umbral
+            
+    def open_mhd_tool(self):
+        if not self.current_shot:
+            messagebox.showwarning("Sin datos", "Por favor, carga un disparo primero.")
+            return
+            
+        try:
+            # Usamos el punto (.) para indicar que el archivo está en la misma carpeta 'ui'
+            from .mhd_tool import MirnovAppToplevel 
+            mhd_window = tk.Toplevel(self.root)
+            MirnovAppToplevel(mhd_window, self.current_shot)
+        except Exception as e:
+            # Si algo falla al importar o construir la ventana, nos mostrará el error en pantalla
+            import traceback
+            error_msg = traceback.format_exc()
+            messagebox.showerror("Error Crítico", f"No se pudo abrir la herramienta MHD:\n\n{error_msg}")
+
+    def open_runaway_tool(self):
+        if not self.current_shot:
+            messagebox.showwarning("Sin datos", "Por favor, carga un disparo primero.")
+            return
+            
+        try:
+            # Usamos el punto (.) para indicar que el archivo está en la misma carpeta 'ui'
+            from .runaway_tool import RunawayAppToplevel
+            runaway_window = tk.Toplevel(self.root)
+            RunawayAppToplevel(runaway_window, self.current_shot)
+        except Exception as e:
+            import traceback
+            error_msg = traceback.format_exc()
+            messagebox.showerror("Error Crítico", f"No se pudo abrir la herramienta HXR:\n\n{error_msg}")
 
     @staticmethod
     def lighter_color(color, factor=1.5):
